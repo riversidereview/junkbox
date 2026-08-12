@@ -60,4 +60,4 @@
 ```bash
 pyinstaller -y D2R_Gem_Crafter.spec
 ```
-打包输出目录：`dist/D2R_Gem_Crafter/D2R_Gem_Crafter.exe`。
+打包输出单个独立绿色执行文件：`dist/D2R_Gem_Crafter.exe`（单文件免安装，开箱即用）。
