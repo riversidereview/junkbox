@@ -1,12 +1,31 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+exclude_patterns = [
+    'opencv_videoio_ffmpeg',
+    'opengl32sw',
+    'Qt6Quick',
+    'Qt6Qml',
+    'Qt6Pdf',
+    'Qt6OpenGL',
+    'Qt6Network',
+    'Qt6Svg',
+    'Qt6VirtualKeyboard',
+    'Qt6ShaderTools',
+    'tcl',
+    'tk',
+    'PIL',
+    '_avif',
+    'libcrypto',
+    'libssl',
+    'sqlite3',
+]
+
 a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
     datas=[('assets', 'assets')],
     hiddenimports=[
-        'PySide6',
         'PySide6.QtCore',
         'PySide6.QtGui',
         'PySide6.QtWidgets',
@@ -20,11 +39,50 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=[
+        'tkinter',
+        '_tkinter',
+        'unittest',
+        'email',
+        'http',
+        'urllib',
+        'xmlrpc',
+        'pydoc',
+        'PySide6.QtNetwork',
+        'PySide6.QtQml',
+        'PySide6.QtQuick',
+        'PySide6.QtPdf',
+        'PySide6.Qt3D',
+        'PySide6.QtSql',
+        'PySide6.QtTest',
+        'PySide6.QtXml',
+        'PySide6.QtSvg',
+        'PySide6.QtOpenGL',
+        'PySide6.QtMultimedia',
+        'PIL',
+        'matplotlib',
+        'scipy',
+        'sqlite3',
+    ],
     noarchive=False,
-    optimize=0,
+    optimize=2,
 )
-pyz = PYZ(a.pure)
+
+# 过滤冗余的大型 DLL 和无用模块
+filtered_binaries = []
+for b in a.binaries:
+    name, path, type_ = b[0], b[1], b[2]
+    should_skip = False
+    for pat in exclude_patterns:
+        if pat.lower() in name.lower() or pat.lower() in path.lower():
+            should_skip = True
+            break
+    if not should_skip:
+        filtered_binaries.append(b)
+
+a.binaries = filtered_binaries
+
+pyz = PYZ(a.pure, optimize=2)
 
 exe = EXE(
     pyz,
