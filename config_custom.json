@@ -1,0 +1,9 @@
+{
+  "stash_x": 105,
+  "stash_y": 85,
+  "click_delay": 0.08,
+  "step_delay": 0.15,
+  "hotkey_stop": "1",
+  "enable_verification": true,
+  "keep_twenty": true
+}
