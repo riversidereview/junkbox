@@ -24,7 +24,7 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[('assets', 'assets')],
+    datas=[('assets', 'assets'), ('app.ico', '.')],
     hiddenimports=[
         'PySide6.QtCore',
         'PySide6.QtGui',

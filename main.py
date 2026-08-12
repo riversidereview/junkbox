@@ -24,10 +24,11 @@ def main():
     app = QApplication(sys.argv)
     app.setStyleSheet(DARK_THEME_QSS)
 
-    # 设置应用图标 (如果有宝石图标)
-    icon_path = os.path.join("assets", "gems", "amethyst_perfect.png")
-    if os.path.exists(icon_path):
-        app.setWindowIcon(QIcon(icon_path))
+    # 设置应用图标 (30# 贝符文高清图标)
+    from core.config import get_resource_path
+    ico_path = get_resource_path("app.ico")
+    if os.path.exists(ico_path):
+        app.setWindowIcon(QIcon(ico_path))
 
     window = MainWindow()
     window.show()
