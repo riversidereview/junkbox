@@ -80,7 +80,7 @@ class HotkeySettingDialog(QDialog):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("暗黑破坏神2:重制版 - 自动宝石/符文合成工具")
+        self.setWindowTitle("暗黑破坏神2:重制版 - 自动宝石/符文合成工具 v1.2.0")
         self.setMinimumSize(1100, 830)
         self.resize(1120, 840)
         self.worker = None
@@ -89,7 +89,7 @@ class MainWindow(QMainWindow):
         self.init_hotkeys()
 
         # 启动后添加欢迎日志
-        self.add_log("[系统] 欢迎使用《暗黑2:重制版》自动宝石与符文合成工具！", "success")
+        self.add_log("[系统] 欢迎使用《暗黑2:重制版》自动宝石与符文合成工具 v1.2.0！", "success")
         hotkey_name = self._get_hotkey_display_name()
         self.add_log(f"[提示] 快捷操作: 按下 [{hotkey_name}] 可在任何合成中随时无条件紧急停止！", "info")
         self.add_log("[就绪] 支持【宝石合成】与【符文合成】独立面板，点击下方选项卡自由切换。", "info")
@@ -114,7 +114,7 @@ class MainWindow(QMainWindow):
         header_layout = QHBoxLayout()
         
         title_box = QVBoxLayout()
-        title_label = QLabel("暗黑破坏神 II: 重制版 自动合成系统")
+        title_label = QLabel("暗黑破坏神 II: 重制版 自动合成系统 v1.2.0")
         title_label.setProperty("class", "AppTitle")
         title_box.addWidget(title_label)
         header_layout.addLayout(title_box)
