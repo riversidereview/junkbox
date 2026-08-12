@@ -9,8 +9,27 @@ import ctypes
 import pyautogui
 from PySide6.QtCore import QObject, Signal
 
-# Windows 虚拟键码定义
-VK_NUMPAD1 = 0x61    # 小键盘 1 (Num 1, 游戏专属无冲突热键)
+# Windows 常用无冲突虚拟键码字典 {key_name: (vk_code, display_name)}
+AVAILABLE_HOTKEYS = {
+    "Num 1": (0x61, "小键盘 1 (Num 1)"),
+    "Num 0": (0x60, "小键盘 0 (Num 0)"),
+    "Num 2": (0x62, "小键盘 2 (Num 2)"),
+    "Num 3": (0x63, "小键盘 3 (Num 3)"),
+    "Num 4": (0x64, "小键盘 4 (Num 4)"),
+    "Num 5": (0x65, "小键盘 5 (Num 5)"),
+    "F1": (0x70, "F1 键"),
+    "F2": (0x71, "F2 键"),
+    "F3": (0x72, "F3 键"),
+    "F4": (0x73, "F4 键"),
+    "F8": (0x77, "F8 键"),
+    "F9": (0x78, "F9 键"),
+    "F10": (0x79, "F10 键"),
+    "F11": (0x7A, "F11 键"),
+    "F12": (0x7B, "F12 键"),
+    "Pause": (0x13, "Pause / Break 键"),
+    "Esc": (0x1B, "ESC 键"),
+    "~ (Tilde)": (0xC0, "~ / ` 波浪键"),
+}
 
 
 class HotkeyBridge(QObject):
@@ -25,6 +44,16 @@ class HotkeyListener:
         self._is_running = False
         self._thread = None
         self._last_trigger_time = 0.0
+        self.current_vk = 0x61 # 默认小键盘 1 (VK_NUMPAD1)
+        self.current_key_name = "Num 1"
+
+    def set_hotkey(self, key_name: str):
+        """动态修改监听的热键"""
+        if key_name in AVAILABLE_HOTKEYS:
+            self.current_key_name = key_name
+            self.current_vk = AVAILABLE_HOTKEYS[key_name][0]
+        elif isinstance(key_name, int):
+            self.current_vk = key_name
 
     def register_stop_callback(self, callback):
         """注册紧急停止回调函数"""
@@ -43,12 +72,11 @@ class HotkeyListener:
             return False
 
     def _listen_loop(self):
-        """仅在用户按下【小键盘 1】时触发，防主键盘冲突，100% 稳定"""
+        """监听用户自定义热键，防冲突原生毫秒级监听"""
         while self._is_running:
             try:
                 now = time.time()
-                # 仅监听小键盘 1 (VK_NUMPAD1)，避免与主键盘输入打字产生任何冲突
-                if self._is_pressed(VK_NUMPAD1):
+                if self._is_pressed(self.current_vk):
                     # 防抖动 (400ms 间隔)
                     if now - self._last_trigger_time > 0.40:
                         self._last_trigger_time = now

@@ -48,6 +48,13 @@ class ScreenCapture:
         x, y, w, h = config.get_gem_grid_screen_rect()
         return self.capture_region(x, y, w, h)
 
+    def capture_rune_grid(self) -> np.ndarray:
+        """截取材料页 33 种符文网格区域"""
+        x = config.stash_x + 442
+        y = config.stash_y + 459
+        w, h = 373, 277
+        return self.capture_region(x, y, w, h)
+
     def capture_cube_area(self) -> np.ndarray:
         """截取魔盒区域"""
         x, y, w, h = config.get_cube_screen_rect()

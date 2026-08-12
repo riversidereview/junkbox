@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-D2R 自动宝石合成工具 - 主界面窗口 (纯净无 Emoji 专业暗黑风)
+D2R 自动宝石/符文合成工具 - 主界面窗口 (支持【宝石合成】与【符文合成】独立选项卡)
 """
 
 import time
@@ -8,137 +8,240 @@ from datetime import datetime
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QProgressBar, QTextEdit,
-    QFrame, QCheckBox, QStatusBar, QMessageBox, QSpacerItem, QSizePolicy
+    QFrame, QCheckBox, QStatusBar, QMessageBox, QTabWidget, QSizePolicy,
+    QDialog, QComboBox, QDialogButtonBox
 )
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QIcon, QTextCursor
 
 from core.config import config, GEM_TYPES, GEM_TIERS
+from core.rune_config import RUNES_DATA, RUNES_BY_ID, get_rune_recipe_text
 from core.screen_capture import screen_cap
 from core.ocr_engine import ocr_engine
 from core.synthesizer import SynthesizerWorker
-from core.hotkey_listener import hotkey_listener
+from core.rune_synthesizer import RuneSynthesizerWorker
+from core.hotkey_listener import hotkey_listener, AVAILABLE_HOTKEYS
 from ui.gem_grid_widget import GemGridWidget
+from ui.rune_grid_widget import RuneGridWidget
+
+
+class HotkeySettingDialog(QDialog):
+    """自定义全局紧急停止热键设置弹窗"""
+    def __init__(self, current_key: str, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("自定义紧急停止热键")
+        self.setFixedSize(360, 180)
+        self.setStyleSheet(
+            "QDialog { background-color: #1a1b1e; color: #dedede; } "
+            "QLabel { color: #dedede; font-size: 13px; } "
+            "QComboBox { background-color: #282a30; color: #f1c40f; border: 1px solid #7c6237; border-radius: 4px; padding: 6px 12px; font-weight: bold; font-size: 13px; } "
+            "QComboBox::drop-down { border: none; } "
+            "QComboBox QAbstractItemView { background-color: #222328; color: #dedede; selection-background-color: #7c6237; selection-color: #fff; } "
+            "QPushButton { background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2c2518, stop:1 #1a160e); border: 1px solid #7c6237; border-radius: 4px; color: #f1c40f; padding: 6px 16px; font-weight: bold; } "
+            "QPushButton:hover { background: #3d3422; color: #fff; border-color: #f1c40f; }"
+        )
+        self.selected_key = current_key
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(14)
+
+        tip_label = QLabel("请选择全局紧急停止热键 (物理原生无冲突监听):")
+        layout.addWidget(tip_label)
+
+        self.combo = QComboBox()
+        for key_name, (vk, display_name) in AVAILABLE_HOTKEYS.items():
+            self.combo.addItem(f"{key_name}  ({display_name})", key_name)
+
+        # 选中当前热键
+        idx = self.combo.findData(current_key)
+        if idx >= 0:
+            self.combo.setCurrentIndex(idx)
+        layout.addWidget(self.combo)
+
+        btn_box = QHBoxLayout()
+        btn_box.addStretch()
+
+        btn_cancel = QPushButton("取消")
+        btn_cancel.clicked.connect(self.reject)
+        btn_box.addWidget(btn_cancel)
+
+        btn_ok = QPushButton("保存生效")
+        btn_ok.clicked.connect(self._on_confirm)
+        btn_box.addWidget(btn_ok)
+
+        layout.addLayout(btn_box)
+
+    def _on_confirm(self):
+        self.selected_key = self.combo.currentData()
+        self.accept()
 
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("暗黑破坏神2:重制版 - 自动宝石合成工具 (大箱子MOD材料页)")
-        self.setMinimumSize(980, 680)
+        self.setWindowTitle("暗黑破坏神2:重制版 - 自动宝石/符文合成工具")
+        self.setMinimumSize(1100, 830)
+        self.resize(1120, 840)
         self.worker = None
         
         self.init_ui()
         self.init_hotkeys()
 
-        # 启动后添加欢迎日志 (无 Emoji)
-        self.add_log("[系统] 欢迎使用《暗黑2:重制版》自动宝石合成工具！", "success")
-        self.add_log("[提示] 快捷操作: 按下 [小键盘 1] (Num 1) 可在合成中随时无条件紧急停止！", "info")
-        self.add_log("[就绪] 请在游戏中打开大箱子的【材料】页，点击【读取宝石数量】进行首次识别测试。", "info")
+        # 启动后添加欢迎日志
+        self.add_log("[系统] 欢迎使用《暗黑2:重制版》自动宝石与符文合成工具！", "success")
+        hotkey_name = self._get_hotkey_display_name()
+        self.add_log(f"[提示] 快捷操作: 按下 [{hotkey_name}] 可在任何合成中随时无条件紧急停止！", "info")
+        self.add_log("[就绪] 支持【宝石合成】与【符文合成】独立面板，点击下方选项卡自由切换。", "info")
+
+    def _get_hotkey_display_name(self) -> str:
+        key = getattr(config, 'hotkey_stop', 'Num 1')
+        if key in AVAILABLE_HOTKEYS:
+            return AVAILABLE_HOTKEYS[key][1]
+        return key
+
+    def _get_hotkey_short_name(self) -> str:
+        return getattr(config, 'hotkey_stop', 'Num 1')
 
     def init_ui(self):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
-        main_layout.setContentsMargins(16, 16, 16, 16)
-        main_layout.setSpacing(12)
+        main_layout.setContentsMargins(14, 14, 14, 14)
+        main_layout.setSpacing(10)
 
-        # 1. 顶部标题栏与状态指示
+        # 1. 顶部标题栏与全局热键自定义按钮
         header_layout = QHBoxLayout()
         
         title_box = QVBoxLayout()
-        title_label = QLabel("暗黑破坏神 II: 重制版 自动宝石合成")
+        title_label = QLabel("暗黑破坏神 II: 重制版 自动合成系统")
         title_label.setProperty("class", "AppTitle")
-        subtitle_label = QLabel("专为大箱子材料页 (Material Tab) MOD 打造 · 1920×1080 目标分辨率")
-        subtitle_label.setProperty("class", "Subtitle")
         title_box.addWidget(title_label)
-        title_box.addWidget(subtitle_label)
         header_layout.addLayout(title_box)
 
         header_layout.addStretch()
 
-        # 热键提示徽标
-        hotkey_badge = QLabel("紧急停止热键: [小键盘 1]")
-        hotkey_badge.setStyleSheet(
-            "background-color: #2b1716; color: #ff7675; border: 1px solid #772621; "
-            "border-radius: 6px; padding: 6px 12px; font-weight: bold; font-size: 13px;"
+        # 可点击自定义的紧急停止热键徽标按钮
+        self.btn_hotkey_setting = QPushButton(f"紧急停止热键: [{self._get_hotkey_display_name()}]  (点击设置)")
+        self.btn_hotkey_setting.setCursor(Qt.PointingHandCursor)
+        self.btn_hotkey_setting.setToolTip("点击自定义或更换全局紧急停止热键")
+        self.btn_hotkey_setting.setStyleSheet(
+            "QPushButton { background-color: #2b1716; color: #ff7675; border: 1px solid #882b26; "
+            "border-radius: 6px; padding: 7px 16px; font-weight: bold; font-size: 13px; } "
+            "QPushButton:hover { background-color: #4a1f1d; border-color: #ff5252; color: #ffffff; } "
+            "QPushButton:pressed { background-color: #1a0f0e; }"
         )
-        header_layout.addWidget(hotkey_badge)
+        self.btn_hotkey_setting.clicked.connect(self.on_change_hotkey_clicked)
+        header_layout.addWidget(self.btn_hotkey_setting)
 
         main_layout.addLayout(header_layout)
 
-        # 2. 核心操作控制条 (已移除全部 Emoji)
-        action_bar = QFrame()
-        action_bar.setProperty("class", "CardFrame")
-        action_layout = QHBoxLayout(action_bar)
-        action_layout.setContentsMargins(12, 10, 12, 10)
-        action_layout.setSpacing(10)
-
-        # 【读取宝石数量】
-        self.btn_read = QPushButton("读取宝石数量")
-        self.btn_read.setToolTip("从游戏画面中抓取材料页，更新 5x7 宝石当前数量")
-        self.btn_read.clicked.connect(self.on_read_gems_clicked)
-        action_layout.addWidget(self.btn_read)
-
-        # 【一键合成全部】
-        self.btn_start_all = QPushButton("一键合成全部")
-        self.btn_start_all.setProperty("class", "PrimaryBtn")
-        self.btn_start_all.setToolTip("全自动将所有可合成的宝石从碎裂层层升至完美！(满99自动向上级联)")
-        self.btn_start_all.clicked.connect(self.on_start_all_synthesis)
-        action_layout.addWidget(self.btn_start_all)
+        # 2. 全局通用设置栏 (魔盒核验 / 紧急停止)
+        global_bar = QFrame()
+        global_bar.setProperty("class", "CardFrame")
+        global_layout = QHBoxLayout(global_bar)
+        global_layout.setContentsMargins(12, 8, 12, 8)
+        global_layout.setSpacing(12)
 
         # 【紧急停止】
-        self.btn_stop = QPushButton("紧急停止 (Num 1)")
+        self.btn_stop = QPushButton(f"紧急停止 ({self._get_hotkey_short_name()})")
         self.btn_stop.setProperty("class", "DangerBtn")
         self.btn_stop.setToolTip("立即中断所有自动化动作并释放鼠标按键")
         self.btn_stop.clicked.connect(self.on_emergency_stop)
         self.btn_stop.setEnabled(False)
-        action_layout.addWidget(self.btn_stop)
+        global_layout.addWidget(self.btn_stop)
 
-        action_layout.addStretch()
+        # 【魔盒核验】
+        self.chk_verify = QCheckBox("魔盒核验")
+        self.chk_verify.setChecked(config.enable_verification)
+        self.chk_verify.setToolTip("在投入与产出时视觉校验魔盒，保障绝对安全")
+        self.chk_verify.toggled.connect(self._on_verify_toggled)
+        global_layout.addWidget(self.chk_verify)
 
-        # 【保留 20 颗宝石】
+        global_layout.addStretch()
+
+        # 状态指示
+        self.status_indicator = QLabel("就绪")
+        self.status_indicator.setStyleSheet("color: #2ecc71; font-weight: bold; font-size: 14px;")
+        global_layout.addWidget(self.status_indicator)
+
+        main_layout.addWidget(global_bar)
+
+        # 3. 中间主体区 (左侧 Tab选项卡：宝石合成 / 符文合成，右侧 实时日志与进度)
+        body_layout = QHBoxLayout()
+        body_layout.setSpacing(12)
+
+        # 左侧：Tab 选项卡容器
+        self.tab_widget = QTabWidget()
+        self.tab_widget.setStyleSheet(
+            "QTabWidget::pane { border: 1px solid #332d20; background-color: #141416; border-radius: 6px; } "
+            "QTabBar::tab { background: #1a1b1e; color: #a0a0aa; font-weight: bold; font-size: 13px; "
+            "padding: 8px 20px; border: 1px solid #282a30; border-bottom: none; border-top-left-radius: 6px; border-top-right-radius: 6px; margin-right: 4px; } "
+            "QTabBar::tab:selected { background: #252219; color: #e5c158; border-color: #7c6237; } "
+            "QTabBar::tab:hover { color: #f1c40f; }"
+        )
+
+        # --- Tab 1: 宝石合成面板 ---
+        gem_tab = QWidget()
+        gem_tab_layout = QVBoxLayout(gem_tab)
+        gem_tab_layout.setContentsMargins(10, 10, 10, 10)
+        gem_tab_layout.setSpacing(10)
+
+        gem_action_bar = QHBoxLayout()
+        self.btn_read_gems = QPushButton("读取宝石数量")
+        self.btn_read_gems.setToolTip("从游戏画面中抓取材料页，更新 5x7 宝石当前数量")
+        self.btn_read_gems.clicked.connect(self.on_read_gems_clicked)
+        gem_action_bar.addWidget(self.btn_read_gems)
+
+        self.btn_start_all_gems = QPushButton("一键合成全部宝石")
+        self.btn_start_all_gems.setProperty("class", "PrimaryBtn")
+        self.btn_start_all_gems.setToolTip("全自动将所有可合成的宝石从碎裂层层升至完美！(满99自动向上级联)")
+        self.btn_start_all_gems.clicked.connect(self.on_start_all_synthesis)
+        gem_action_bar.addWidget(self.btn_start_all_gems)
+
         self.chk_keep_twenty = QCheckBox("保留 20 颗宝石")
         self.chk_keep_twenty.setChecked(config.keep_twenty)
         self.chk_keep_twenty.setToolTip("勾选后，当前宝石数量少于或等于 20 颗时，会自动跳过该阶并合成下一级宝石")
         self.chk_keep_twenty.toggled.connect(self._on_keep_twenty_toggled)
-        action_layout.addWidget(self.chk_keep_twenty)
+        gem_action_bar.addWidget(self.chk_keep_twenty)
 
-        # 选项勾选
-        self.chk_verify = QCheckBox("魔盒核验")
-        self.chk_verify.setChecked(config.enable_verification)
-        self.chk_verify.setToolTip("在投入3颗与产出1颗时视觉校验魔盒，保障绝对安全")
-        self.chk_verify.toggled.connect(self._on_verify_toggled)
-        action_layout.addWidget(self.chk_verify)
-
-        self.chk_dry_run = QCheckBox("模拟测试")
-        self.chk_dry_run.setChecked(config.dry_run)
-        self.chk_dry_run.setToolTip("测试模式下只在日志中打印动作流程，不真正控制鼠标点击")
-        self.chk_dry_run.toggled.connect(self._on_dry_run_toggled)
-        action_layout.addWidget(self.chk_dry_run)
-
-        main_layout.addWidget(action_bar)
-
-        # 3. 中间主体区 (左侧 5x7 宝石矩阵卡片，右侧 实时日志与状态)
-        body_layout = QHBoxLayout()
-        body_layout.setSpacing(12)
-
-        # 左侧：宝石矩阵卡片
-        left_panel = QFrame()
-        left_panel.setProperty("class", "CardFrame")
-        left_layout = QVBoxLayout(left_panel)
-        left_layout.setContentsMargins(10, 10, 10, 10)
-        
-        grid_title = QLabel("材料页宝石库存矩阵 (双击数字可手动编辑测试)")
-        grid_title.setStyleSheet("font-weight: bold; color: #e5c158; font-size: 13px;")
-        left_layout.addWidget(grid_title)
+        gem_action_bar.addStretch()
+        gem_tab_layout.addLayout(gem_action_bar)
 
         self.gem_grid = GemGridWidget()
         self.gem_grid.quick_craft_requested.connect(self.on_quick_synthesis)
-        left_layout.addWidget(self.gem_grid)
-        left_layout.addStretch()
+        gem_tab_layout.addWidget(self.gem_grid)
+        gem_tab_layout.addStretch()
 
-        body_layout.addWidget(left_panel, stretch=6)
+        self.tab_widget.addTab(gem_tab, "宝石合成 (5x7)")
+
+        # --- Tab 2: 符文合成面板 ---
+        rune_tab = QWidget()
+        rune_tab_layout = QVBoxLayout(rune_tab)
+        rune_tab_layout.setContentsMargins(10, 10, 10, 10)
+        rune_tab_layout.setSpacing(8)
+
+        rune_action_bar = QHBoxLayout()
+        self.btn_read_runes = QPushButton("读取符文数量")
+        self.btn_read_runes.setToolTip("从游戏画面中抓取材料页，更新 33 种符文当前数量")
+        self.btn_read_runes.clicked.connect(self.on_read_runes_clicked)
+        rune_action_bar.addWidget(self.btn_read_runes)
+
+        rune_info_label = QLabel("符文合成系统 (点击各符文下方【合成10个】按钮，自动放入符文及对应所需宝石)")
+        rune_info_label.setStyleSheet("color: #e5c158; font-size: 12px; font-weight: bold; margin-left: 10px;")
+        rune_action_bar.addWidget(rune_info_label)
+        rune_action_bar.addStretch()
+
+        rune_tab_layout.addLayout(rune_action_bar)
+
+        self.rune_grid = RuneGridWidget()
+        self.rune_grid.craft10_requested.connect(self.on_craft_rune_10_requested)
+        rune_tab_layout.addWidget(self.rune_grid)
+        rune_tab_layout.addStretch()
+
+        self.tab_widget.addTab(rune_tab, "符文合成 (1#~33#)")
+
+        body_layout.addWidget(self.tab_widget, stretch=6)
 
         # 右侧：状态面板与实时日志
         right_panel = QFrame()
@@ -147,31 +250,26 @@ class MainWindow(QMainWindow):
         right_layout.setContentsMargins(12, 12, 12, 12)
         right_layout.setSpacing(8)
 
-        # 状态指示卡片
-        status_box = QHBoxLayout()
-        self.status_indicator = QLabel("就绪")
-        self.status_indicator.setStyleSheet("color: #2ecc71; font-weight: bold; font-size: 14px;")
-        status_box.addWidget(self.status_indicator)
+        log_top_box = QHBoxLayout()
+        log_label = QLabel("实时执行控制台:")
+        log_label.setStyleSheet("color: #a0a0aa; font-size: 12px; font-weight: bold;")
+        log_top_box.addWidget(log_label)
 
-        status_box.addStretch()
+        log_top_box.addStretch()
 
         self.btn_clear_log = QPushButton("清空日志")
         self.btn_clear_log.setStyleSheet("padding: 3px 8px; font-size: 11px;")
         self.btn_clear_log.clicked.connect(self.clear_log)
-        status_box.addWidget(self.btn_clear_log)
-        right_layout.addLayout(status_box)
+        log_top_box.addWidget(self.btn_clear_log)
+        right_layout.addLayout(log_top_box)
 
         # 进度条
         self.progress_bar = QProgressBar()
         self.progress_bar.setValue(0)
-        self.progress_bar.setFormat("合成进度: 0 / 0")
+        self.progress_bar.setFormat("进度: 0 / 0")
         right_layout.addWidget(self.progress_bar)
 
         # 日志文本终端
-        log_label = QLabel("实时执行控制台:")
-        log_label.setStyleSheet("color: #a0a0aa; font-size: 12px; font-weight: bold;")
-        right_layout.addWidget(log_label)
-
         self.log_text = QTextEdit()
         self.log_text.setProperty("class", "LogTerminal")
         self.log_text.setReadOnly(True)
@@ -187,12 +285,28 @@ class MainWindow(QMainWindow):
         self.status_bar.showMessage("就绪 · 等待用户指令")
 
     def init_hotkeys(self):
-        """初始化全局热键监听 (通过 Qt.QueuedConnection 确保主线程安全)"""
+        """初始化全局热键监听"""
         hotkey_listener.bridge.hotkey_pressed.connect(self.on_emergency_stop, Qt.QueuedConnection)
+        hotkey_listener.set_hotkey(config.hotkey_stop)
         hotkey_listener.start()
 
+    def on_change_hotkey_clicked(self):
+        """弹出自定义热键对话框"""
+        dlg = HotkeySettingDialog(config.hotkey_stop, self)
+        if dlg.exec():
+            new_key = dlg.selected_key
+            config.hotkey_stop = new_key
+            config.save()
+            hotkey_listener.set_hotkey(new_key)
+
+            display_name = self._get_hotkey_display_name()
+            short_name = self._get_hotkey_short_name()
+            self.btn_hotkey_setting.setText(f"紧急停止热键: [{display_name}]  (点击设置)")
+            self.btn_stop.setText(f"紧急停止 ({short_name})")
+            self.add_log(f"[配置] 全局紧急停止热键已修改为: [{display_name}]", "success")
+
     def add_log(self, text: str, level: str = "info"):
-        """向日志终端追加带色彩的时间戳消息 (主线程安全执行)"""
+        """向日志终端追加带色彩的时间戳消息"""
         now = datetime.now().strftime("%H:%M:%S")
         color_map = {
             "info": "#74b9ff",
@@ -220,10 +334,7 @@ class MainWindow(QMainWindow):
         config.save()
         self.add_log(f"[配置] 魔盒视觉核验已 {'启用' if checked else '禁用'}", "info")
 
-    def _on_dry_run_toggled(self, checked):
-        config.dry_run = checked
-        self.add_log(f"[配置] 模拟测试模式已 {'开启 (不控制鼠标)' if checked else '关闭 (实机控制)'}", "warning" if checked else "info")
-
+    # ---- 宝石合成调度 ----
     def on_read_gems_clicked(self):
         """点击读取宝石数量"""
         self.add_log("[OCR] 正在抓取屏幕材料页宝石数量...", "info")
@@ -243,26 +354,21 @@ class MainWindow(QMainWindow):
             self.add_log(f"[错误] 识别过程出错: {e}", "error")
 
     def on_start_all_synthesis(self):
-        """启动一键全量合成"""
-        self._start_worker(mode="all")
+        """启动一键全量宝石合成"""
+        self._start_gem_worker(mode="all")
 
     def on_quick_synthesis(self, col: int):
         """单种宝石快速合成"""
         gem_name = GEM_TYPES[col]["name"]
         self.add_log(f"[指令] 请求快速合成【{gem_name}】...", "info")
-        self._start_worker(mode="single", target_col=col)
+        self._start_gem_worker(mode="single", target_col=col)
 
-    def _start_worker(self, mode: str = "all", target_col: int = None):
-        """启动后台合成工作线程"""
+    def _start_gem_worker(self, mode: str = "all", target_col: int = None):
+        """启动宝石合成工作线程"""
         if self.worker and self.worker.isRunning():
             return
 
-        self.btn_read.setEnabled(False)
-        self.btn_start_all.setEnabled(False)
-        self.btn_stop.setEnabled(True)
-        self.status_indicator.setText("正在合成中...")
-        self.status_indicator.setStyleSheet("color: #f1c40f; font-weight: bold; font-size: 14px;")
-
+        self._set_ui_busy(True)
         current_matrix = self.gem_grid.get_matrix()
         self.worker = SynthesizerWorker(mode=mode, target_col=target_col, current_matrix=current_matrix)
         
@@ -271,19 +377,75 @@ class MainWindow(QMainWindow):
         self.worker.gem_matrix_updated.connect(self.gem_grid.set_matrix)
         self.worker.status_changed.connect(self.status_bar.showMessage)
         self.worker.finished_synthesis.connect(self._on_synthesis_finished)
-        
         self.worker.start()
+
+    # ---- 符文合成调度 ----
+    def on_read_runes_clicked(self):
+        """点击读取符文数量"""
+        self.add_log("[OCR] 正在抓取屏幕材料页 33 种符文数量...", "info")
+        self.status_bar.showMessage("正在抓取材料页符文库存...")
+
+        try:
+            rune_crop = screen_cap.capture_rune_grid()
+            counts = ocr_engine.recognize_all_runes(rune_crop)
+            if counts and sum(counts.values()) > 0:
+                self.rune_grid.set_counts(counts)
+                total_count = sum(counts.values())
+                self.add_log(f"[OCR] 符文识别成功！当前已记录 33 种符文共 {total_count} 颗", "success")
+                self.status_bar.showMessage(f"读取完成 · 共检测到 {total_count} 颗符文")
+            else:
+                self.add_log("[警告] 截屏未能识别到符文，请确认已在游戏中打开大箱子【材料】页！", "warning")
+        except Exception as e:
+            self.add_log(f"[错误] 符文识别过程出错: {e}", "error")
+
+    def on_craft_rune_10_requested(self, rune_id: int):
+        """用户点击某符文卡片上的【合成10个】"""
+        if self.worker and self.worker.isRunning():
+            return
+
+        rune_info = RUNES_BY_ID.get(rune_id)
+        if not rune_info:
+            return
+
+        recipe_desc = get_rune_recipe_text(rune_id)
+        self.add_log(f"[指令] 请求合成【{rune_id}# {rune_info['name_zh']}】10次 (配方: {recipe_desc})", "info")
+
+        self._set_ui_busy(True)
+        current_runes = self.rune_grid.get_counts()
+        current_gems = self.gem_grid.get_matrix()
+
+        self.worker = RuneSynthesizerWorker(
+            target_rune_id=rune_id,
+            current_runes=current_runes,
+            current_gems=current_gems,
+            repeat_count=10
+        )
+
+        self.worker.log_message.connect(self.add_log)
+        self.worker.progress_updated.connect(self._on_progress_updated)
+        self.worker.runes_updated.connect(self.rune_grid.set_counts)
+        self.worker.gem_matrix_updated.connect(self.gem_grid.set_matrix)
+        self.worker.status_changed.connect(self.status_bar.showMessage)
+        self.worker.finished_synthesis.connect(self._on_synthesis_finished)
+        self.worker.start()
+
+    def _set_ui_busy(self, busy: bool):
+        self.btn_read_gems.setEnabled(not busy)
+        self.btn_start_all_gems.setEnabled(not busy)
+        if hasattr(self, 'btn_read_runes'):
+            self.btn_read_runes.setEnabled(not busy)
+        self.btn_stop.setEnabled(busy)
+        if busy:
+            self.status_indicator.setText("正在合成中...")
+            self.status_indicator.setStyleSheet("color: #f1c40f; font-weight: bold; font-size: 14px;")
 
     def _on_progress_updated(self, cur, total):
         self.progress_bar.setMaximum(total)
         self.progress_bar.setValue(cur)
-        self.progress_bar.setFormat(f"合成进度: {cur} / {total} 轮")
+        self.progress_bar.setFormat(f"合成进度: {cur} / {total}")
 
     def _on_synthesis_finished(self, success, message):
-        self.btn_read.setEnabled(True)
-        self.btn_start_all.setEnabled(True)
-        self.btn_stop.setEnabled(False)
-        
+        self._set_ui_busy(False)
         if success:
             self.status_indicator.setText("已就绪")
             self.status_indicator.setStyleSheet("color: #2ecc71; font-weight: bold; font-size: 14px;")
@@ -292,7 +454,7 @@ class MainWindow(QMainWindow):
             self.status_indicator.setStyleSheet("color: #e74c3c; font-weight: bold; font-size: 14px;")
 
     def on_emergency_stop(self):
-        """紧急停止触发 (仅在合成正在运行时响应与打印日志)"""
+        """紧急停止触发"""
         hotkey_listener.emergency_release_keys()
         if self.worker and self.worker.isRunning():
             self.worker.request_stop()

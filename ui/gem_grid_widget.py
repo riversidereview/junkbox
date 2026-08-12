@@ -28,20 +28,20 @@ class GemCellWidget(QFrame):
         self.init_ui()
 
     def init_ui(self):
-        self.setFixedSize(56, 72)
+        self.setFixedSize(66, 86)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(3, 3, 3, 3)
         layout.setSpacing(3)
 
-        # 1. 顶部宝石图标 (独立容器，44x44 等比居中，完全不被遮挡)
+        # 1. 顶部宝石图标 (独立容器，48x48 等比居中，完全不被遮挡)
         self.icon_label = QLabel()
-        self.icon_label.setFixedSize(48, 44)
+        self.icon_label.setFixedSize(58, 50)
         self.icon_label.setAlignment(Qt.AlignCenter)
 
         rel_icon_path = os.path.join("assets", "gems", f"{self.gem_info['id']}_{self.tier_info['id']}.png")
         icon_path = get_resource_path(rel_icon_path)
         if os.path.exists(icon_path):
-            pix = QPixmap(icon_path).scaled(42, 42, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            pix = QPixmap(icon_path).scaled(44, 44, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             self.icon_label.setPixmap(pix)
         else:
             self.icon_label.setText(self.gem_info['name'][:1])
@@ -101,21 +101,21 @@ class GemGridWidget(QWidget):
         main_layout.setSpacing(6)
 
         grid = QGridLayout()
-        grid.setSpacing(5)
+        grid.setSpacing(6)
 
         # 1. 顶部列头 (7 种宝石名称与颜色指示)
         grid.addWidget(QLabel(""), 0, 0)
         for c, gem in enumerate(GEM_TYPES):
             header = QLabel(gem["name"])
             header.setAlignment(Qt.AlignCenter)
-            header.setStyleSheet(f"color: {gem['color']}; font-weight: bold; font-size: 13px; padding-bottom: 2px;")
+            header.setStyleSheet(f"color: {gem['color']}; font-weight: bold; font-size: 13px; padding-bottom: 4px;")
             grid.addWidget(header, 0, c + 1)
 
         # 2. 5 行宝石卡片
         for r, tier in enumerate(GEM_TIERS):
             row_label = QLabel(tier["name"])
             row_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            row_label.setStyleSheet("color: #a0a0aa; font-weight: 500; font-size: 12px; padding-right: 4px;")
+            row_label.setStyleSheet("color: #a0a0aa; font-weight: 500; font-size: 12px; padding-right: 6px;")
             grid.addWidget(row_label, r + 1, 0)
 
             for c, gem in enumerate(GEM_TYPES):
@@ -127,12 +127,13 @@ class GemGridWidget(QWidget):
         # 3. 底部 7 个快速合成按钮
         quick_label = QLabel("快速合成:")
         quick_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        quick_label.setStyleSheet("color: #e5c158; font-size: 11px; font-weight: bold; padding-right: 4px;")
+        quick_label.setStyleSheet("color: #e5c158; font-size: 11px; font-weight: bold; padding-right: 6px;")
         grid.addWidget(quick_label, 6, 0)
 
         for c, gem in enumerate(GEM_TYPES):
             btn = QPushButton("合成")
             btn.setProperty("class", "QuickCraftBtn")
+            btn.setFixedHeight(24)
             btn.setToolTip(f"只合成该列全部【{gem['name']}】至完美等级")
             btn.clicked.connect(lambda checked=False, col=c: self.quick_craft_requested.emit(col))
             grid.addWidget(btn, 6, c + 1)

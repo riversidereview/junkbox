@@ -45,6 +45,11 @@ GEM_COL_X = [82, 135, 189, 242, 296, 349, 402]
 GEM_ROW_Y = [486, 541, 596, 651, 707]
 GEM_GRID_RECT = {"x": 56, "y": 459, "w": 373, "h": 277}
 
+# 材料页 33 种符文格子的相对中心坐标 (相对于仓库左上角)
+RUNE_COL_X = [468, 521, 575, 628, 681, 735, 788]
+RUNE_ROW_Y = [486, 541, 596, 651, 707]
+RUNE_GRID_RECT = {"x": 442, "y": 459, "w": 373, "h": 277}
+
 # 魔盒区域 (Cube) 相对坐标
 CUBE_COL_X = [315, 364, 413]
 CUBE_ROW_Y = [268, 317, 366, 415]
@@ -67,7 +72,7 @@ class ConfigManager:
         self.click_delay = 0.08          # 单次点击间隙 (秒)
         self.step_delay = 0.15           # 步骤间隙 (秒)
         self.verify_timeout = 1.0        # 视觉校验超时 (秒)
-        self.hotkey_stop = "1"           # 停止热键 (小键盘1 / Num 1)
+        self.hotkey_stop = "Num 1"       # 停止热键 (默认小键盘 1 / Num 1)
         self.dry_run = False             # 模拟测试模式 (只打印动作，不真实触发鼠标)
         self.enable_verification = True  # 是否启用魔盒状态机器视觉核验
         self.keep_twenty = False         # 保留20颗宝石选项 (少于或等于20颗时自动合成下一级)
@@ -76,6 +81,10 @@ class ConfigManager:
     def get_gem_screen_pos(self, row: int, col: int):
         """获取指定行列宝石格子的绝对屏幕坐标"""
         return (self.stash_x + GEM_COL_X[col], self.stash_y + GEM_ROW_Y[row])
+
+    def get_rune_screen_pos(self, row: int, col: int):
+        """获取指定行列符文格子的绝对屏幕坐标"""
+        return (self.stash_x + RUNE_COL_X[col], self.stash_y + RUNE_ROW_Y[row])
 
     def get_cube_slot_screen_pos(self, row: int = 0, col: int = 0):
         """获取魔盒指定槽位绝对屏幕坐标"""
@@ -112,7 +121,10 @@ class ConfigManager:
                     self.stash_y = data.get("stash_y", self.stash_y)
                     self.click_delay = data.get("click_delay", self.click_delay)
                     self.step_delay = data.get("step_delay", self.step_delay)
-                    self.hotkey_stop = data.get("hotkey_stop", self.hotkey_stop)
+                    raw_hotkey = data.get("hotkey_stop", self.hotkey_stop)
+                    if raw_hotkey == "1":
+                        raw_hotkey = "Num 1"
+                    self.hotkey_stop = raw_hotkey
                     self.enable_verification = data.get("enable_verification", self.enable_verification)
                     self.keep_twenty = data.get("keep_twenty", self.keep_twenty)
             except Exception as e:
