@@ -15,8 +15,6 @@ exclude_patterns = [
     'tk',
     'PIL',
     '_avif',
-    'libcrypto',
-    'libssl',
     'sqlite3',
 ]
 
@@ -35,6 +33,8 @@ a = Analysis(
         'cv2',
         'numpy',
         'pyautogui',
+        'urllib',
+        'urllib.parse',
     ],
     hookspath=[],
     hooksconfig={},
@@ -43,10 +43,6 @@ a = Analysis(
         'tkinter',
         '_tkinter',
         'unittest',
-        'email',
-        'http',
-        'urllib',
-        'xmlrpc',
         'pydoc',
         'PySide6.QtNetwork',
         'PySide6.QtQml',
@@ -65,10 +61,10 @@ a = Analysis(
         'sqlite3',
     ],
     noarchive=False,
-    optimize=2,
+    optimize=1,
 )
 
-# 过滤冗余的大型 DLL 和无用模块
+# 过滤真正不需要的大型非核心 DLL
 filtered_binaries = []
 for b in a.binaries:
     name, path, type_ = b[0], b[1], b[2]
@@ -82,7 +78,7 @@ for b in a.binaries:
 
 a.binaries = filtered_binaries
 
-pyz = PYZ(a.pure, optimize=2)
+pyz = PYZ(a.pure, optimize=1)
 
 exe = EXE(
     pyz,
